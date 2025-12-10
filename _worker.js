@@ -1,10 +1,11 @@
 /**
- * Cloudflare Worker: RenewHelper (v1.3.2)
+ * Cloudflare Worker: RenewHelper (v1.3.3)
  * Author: LOSTFREE
  * Features: Multi-Channel Notify, Import/Export, Channel Test, Bilingual UI, Precise ICS Alarm
+ * added: sort, filter
  */
 
-const APP_VERSION = "v1.3.2";
+const APP_VERSION = "v1.3.3";
 
 // ==========================================
 // 1. Core Logic (Lunar & Calc)
@@ -345,7 +346,7 @@ const DataStore = {
     if (raw)
       try {
         s = JSON.parse(raw);
-      } catch (e) {}
+      } catch (e) { }
 
     const defaults = {
       enableNotify: true,
@@ -443,7 +444,7 @@ const DataStore = {
     return { settings, items: pkg.items, version: pkg.version };
   },
 
-// 【修复】增加 try-catch 容错，防止日志数据损坏导致无法写入
+  // 【修复】增加 try-catch 容错，防止日志数据损坏导致无法写入
   async getLogs(env) {
     try {
       const raw = await env.RENEW_KV.get(this.KEYS.LOGS);
@@ -967,8 +968,8 @@ async function checkAndRenew(env, isSched, lang = "zh") {
         days === 0
           ? t("today", lang)
           : days < 0
-          ? t("overdue", lang, Math.abs(days))
-          : t("left", lang, days);
+            ? t("overdue", lang, Math.abs(days))
+            : t("left", lang, days);
       log(
         t(
           "checkLog",
@@ -1029,8 +1030,7 @@ async function checkAndRenew(env, isSched, lang = "zh") {
       pushBody.push(`【${t("secDis", lang)}】`);
       dis.forEach((x, i) =>
         pushBody.push(
-          `${i + 1}. ${x.name} (${t("overdue", lang, Math.abs(x.daysLeft))} / ${
-            x.nextDueDate
+          `${i + 1}. ${x.name} (${t("overdue", lang, Math.abs(x.daysLeft))} / ${x.nextDueDate
           })\n${x.note}`
         )
       );
@@ -1050,8 +1050,8 @@ async function checkAndRenew(env, isSched, lang = "zh") {
           x.daysLeft === 0
             ? t("today", lang)
             : x.daysLeft < 0
-            ? t("overdue", lang, Math.abs(x.daysLeft))
-            : t("left", lang, x.daysLeft);
+              ? t("overdue", lang, Math.abs(x.daysLeft))
+              : t("left", lang, x.daysLeft);
         pushBody.push(
           `${i + 1}. ${x.name}: ${dayStr} (${x.nextDueDate})\n${x.note}`
         );
@@ -1071,17 +1071,17 @@ async function checkAndRenew(env, isSched, lang = "zh") {
     trig.length ? "alert" : null,
     monitor.length ? "normal" : null,
   ].filter(Boolean);
-  
+
   const hasError = logs.some(l => l.includes('[WARN]') || l.includes('[ERR]'));
 
   if (act.length === 0) {
-      act.push("normal"); // 无论手动还是 Cron，只要没动作都记为 Normal
+    act.push("normal"); // 无论手动还是 Cron，只要没动作都记为 Normal
   }
   // 如果有错误，确保升级为 Alert
   if (hasError && !act.includes("alert")) {
-      act.push("alert");
+    act.push("alert");
   }
-  
+
   if (act.length > 0) {
     await DataStore.saveLog(env, {
       time: new Date().toISOString(),
@@ -1229,9 +1229,8 @@ app.get(
     return new Response(JSON.stringify(exportData, null, 2), {
       headers: {
         "Content-Type": "application/json",
-        "Content-Disposition": `attachment; filename="RenewHelper_Backup_${
-          new Date().toISOString().split("T")[0]
-        }.json"`,
+        "Content-Disposition": `attachment; filename="RenewHelper_Backup_${new Date().toISOString().split("T")[0]
+          }.json"`,
       },
     });
   })
@@ -1729,7 +1728,7 @@ const HTML = `<!DOCTYPE html>
                     <div class="hud-bar-container"><div class="hud-text" style="margin-right:12px;color:#94a3b8">MATCHED: <span class="text-white text-lg mx-1">{{ filteredList.length }}</span></div><div class="hud-bar" style="animation-delay:0s"></div><div class="hud-bar" style="animation-delay:0.1s"></div><div class="hud-bar" style="animation-delay:0.2s"></div><div class="hud-bar" style="animation-delay:0.3s"></div><div class="hud-bar" style="animation-delay:0.4s"></div></div>
                 </div>
   <div class="mecha-panel p-1 !border-l-0">
-    <el-table :key="tableKey" :data="pagedList" style="width:100%" v-loading="loading" :row-class-name="tableRowClassName" size="large">       
+    <el-table :key="tableKey" :data="pagedList" style="width:100%" v-loading="loading" :row-class-name="tableRowClassName" size="large" @sort-change="handleSortChange" @filter-change="handleFilterChange" :default-sort="{prop: 'daysLeft', order: 'ascending'}">       
         <el-table-column :label="t('serviceName')" min-width="230">
             <template #default="scope">
                 <div class="flex items-center gap-4">
@@ -1748,7 +1747,7 @@ const HTML = `<!DOCTYPE html>
             </template>
         </el-table-column>
 
-        <el-table-column :label="t('type')" width="100">
+        <el-table-column :label="t('type')" width="100" prop="type" column-key="type" :filters="typeFilters">
             <template #default="scope">
                 <div class="flex items-center h-full">
                     <span v-if="scope.row.type==='reset'" class="text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200 px-1.5 py-0.5 tracking-wider whitespace-nowrap">{{ t('typeReset') }}</span>
@@ -1757,7 +1756,7 @@ const HTML = `<!DOCTYPE html>
             </template>
         </el-table-column>
 
-        <el-table-column :label="t('nextDue')" min-width="200">
+        <el-table-column :label="t('nextDue')" min-width="200" prop="daysLeft" sortable="custom" column-key="daysLeft" :filters="nextDueFilters">
             <template #default="scope">
                 <div v-if="scope.row.enabled">
                     <div class="flex items-center gap-2">
@@ -1773,13 +1772,13 @@ const HTML = `<!DOCTYPE html>
             </template>
         </el-table-column>
 
-        <el-table-column :label="t('uptime')" width="120">
+        <el-table-column :label="t('uptime')" width="120" prop="serviceDays" sortable="custom" column-key="serviceDays" :filters="uptimeFilters">
             <template #default="scope">
                 <span class="inline-block bg-body text-textDim border border-border px-2 py-1 font-mono text-sm font-bold">{{ scope.row.serviceDays }} {{ t('daysUnit') }}</span>
             </template>
         </el-table-column>
 
-        <el-table-column :label="t('lastRenew')" width="140">
+        <el-table-column :label="t('lastRenew')" width="140" prop="lastRenewDate" sortable="custom" column-key="lastRenewDate" :filters="lastRenewFilters">
             <template #default="scope">
                 <div class="font-mono text-textDim text-sm font-bold">{{ scope.row.lastRenewDate }}</div>
                 <div v-if="scope.row.useLunar && scope.row.lastRenewDateLunar" class="text-[10px] text-gray-400 font-mono">({{ scope.row.lastRenewDateLunar }})</div>
@@ -2060,12 +2059,12 @@ const HTML = `<!DOCTYPE html>
         const { Edit, Delete, Plus, VideoPlay, Setting, Bell, Document, Lock, Monitor, SwitchButton, Calendar, Timer, Files, AlarmClock, Warning, Search, Cpu, Upload, Download, Link, Message, Promotion, Iphone, Moon, Sunny, RefreshRight } = ElementPlusIconsVue;
         const ZhCn = window.ElementPlusLocaleZhCn || {};
         const messages = {
-            zh: { secPref: '偏好设置',manualRenew: '手动续期',tipToggle: '切换状态',tipRenew: '手动续期',tipEdit: '编辑服务',tipDelete: '删除服务',secNotify: '通知配置',secData: '数据管理',lblIcsTitle: '日历订阅',lblIcsUrl: '订阅地址 (iOS/Google)',btnCopy: '复制',btnResetToken: '重置令牌',loginTitle:'身份验证',passwordPlaceholder:'请输入访问密钥/Authorization Key',unlockBtn:'解锁终端/UNLOCK',check:'立即检查',add:'新增服务',settings:'系统设置',logs:'运行日志',logout:'安全退出',totalServices:'服务总数',expiringSoon:'即将到期',expiredAlert:'已过期 / 警告',serviceName:'服务名称',type:'类型',nextDue:'下次到期',uptime:'已运行',lastRenew:'上次续费',cyclePeriod:'周期',actions:'操作',cycle:'循环订阅',reset:'到期重置',disabled:'已停用',days:'天',daysUnit:'天',typeReset:'到期重置',typeCycle:'循环订阅',lunarCal:'农历',lbOffline:'离线',unit:{day:'天',month:'月',year:'年'},editService:'编辑服务',newService:'新增服务',formName:'名称',namePlaceholder:'例如: Netflix',formType:'模式',createDate:'创建时间',interval:'周期时长',note:'备注信息',status:'状态',active:'启用',disabledText:'禁用',cancel:'取消',save:'保存数据',saveSettings:'保存配置',settingsTitle:'系统设置',setNotify:'通知配置',pushSwitch:'推送总开关',pushUrl:'Webhook 地址',notifyThreshold:'提醒阈值',setAuto:'自动化配置',autoRenewSwitch:'自动续期',autoRenewThreshold:'自动续期阈值',autoDisableThreshold:'自动禁用阈值',daysOverdue:'天后触发',sysLogs:'系统日志',execLogs:'执行记录',clearHistory:'清空历史',noLogs:'无记录',liveLog:'实时终端',btnExport: '导出备份',btnImport: '恢复备份',btnTest: '发送测试',btnRefresh:'刷新日志',
+            zh: { filter:{expired:'已过期 / 今天', w7:'7天内', w30:'30天内', future:'远期(>30天)', new:'新服务 (<30天)', stable:'稳定 (1个月-1年)', long:'长期 (>1年)', m1:'最近1个月', m6:'半年内', year:'今年内', earlier:'更早以前'}, secPref: '偏好设置',manualRenew: '手动续期',tipToggle: '切换状态',tipRenew: '手动续期',tipEdit: '编辑服务',tipDelete: '删除服务',secNotify: '通知配置',secData: '数据管理',lblIcsTitle: '日历订阅',lblIcsUrl: '订阅地址 (iOS/Google)',btnCopy: '复制',btnResetToken: '重置令牌',loginTitle:'身份验证',passwordPlaceholder:'请输入访问密钥/Authorization Key',unlockBtn:'解锁终端/UNLOCK',check:'立即检查',add:'新增服务',settings:'系统设置',logs:'运行日志',logout:'安全退出',totalServices:'服务总数',expiringSoon:'即将到期',expiredAlert:'已过期 / 警告',serviceName:'服务名称',type:'类型',nextDue:'下次到期',uptime:'已运行',lastRenew:'上次续费',cyclePeriod:'周期',actions:'操作',cycle:'循环订阅',reset:'到期重置',disabled:'已停用',days:'天',daysUnit:'天',typeReset:'到期重置',typeCycle:'循环订阅',lunarCal:'农历',lbOffline:'离线',unit:{day:'天',month:'月',year:'年'},editService:'编辑服务',newService:'新增服务',formName:'名称',namePlaceholder:'例如: Netflix',formType:'模式',createDate:'创建时间',interval:'周期时长',note:'备注信息',status:'状态',active:'启用',disabledText:'禁用',cancel:'取消',save:'保存数据',saveSettings:'保存配置',settingsTitle:'系统设置',setNotify:'通知配置',pushSwitch:'推送总开关',pushUrl:'Webhook 地址',notifyThreshold:'提醒阈值',setAuto:'自动化配置',autoRenewSwitch:'自动续期',autoRenewThreshold:'自动续期阈值',autoDisableThreshold:'自动禁用阈值',daysOverdue:'天后触发',sysLogs:'系统日志',execLogs:'执行记录',clearHistory:'清空历史',noLogs:'无记录',liveLog:'实时终端',btnExport: '导出备份',btnImport: '恢复备份',btnTest: '发送测试',btnRefresh:'刷新日志',
             lblEnable: '启用', lblToken: '令牌 (Token)', lblApiKey: 'API Key', lblChatId: '会话ID', 
             lblServer: '服务器URL', lblDevKey: '设备Key', lblFrom: '发件人', lblTo: '收件人',
             lblNotifyTime: '提醒时间', btnResetToken: '重置令牌',
             tag:{alert:'触发提醒',renew:'自动续期',disable:'自动禁用',normal:'检查正常'},msg:{confirmRenew: '确认将 [%s] 的续费日期更新为今天吗？',renewSuccess: '续期成功！日期已更新: %s -> %t',tokenReset: '令牌已重置，请更新订阅地址', copyOk: '链接已复制', exportSuccess: '备份已下载',importSuccess: '数据恢复成功，即将刷新',importFail: '导入失败，请检查文件格式',passReq:'请输入密码',saved:'保存成功',saveFail:'保存失败',cleared:'已清空',clearFail:'清空失败',loginFail:'验证失败',loadLogFail:'日志加载失败',confirmDel:'确认删除此项目?',dateError:'上次续费日期不能早于创建日期',nameReq:'服务名称不能为空',nameExist:'服务名称已存在',futureError:'上次续期不能是未来时间',serviceDisabled:'服务已停用',serviceEnabled:'服务已启用',execFinish: '执行完毕!'},tags:'标签',tagPlaceholder:'输入标签回车创建',searchPlaceholder:'搜索标题或备注...',tagsCol:'标签',tagAll:'全部',useLunar:'农历周期',lunarTip:'按农历日期计算周期',yes:'是',no:'否',timezone:'偏好时区',disabledFilter:'已停用',policyConfig:'自动化策略',policyNotify:'提醒提前期',policyAuto:'自动续期',policyRenewDay:'过期续期天数',useGlobal:'全局默认',autoRenewOnDesc:'过期自动续期',autoRenewOffDesc:'过期自动禁用',},
-            en: { secPref: 'PREFERENCES',manualRenew: 'Quick Renew',tipToggle: 'Toggle Status',tipRenew: 'Quick Renew',tipEdit: 'Edit Service',tipDelete: 'Delete Service',secNotify: 'NOTIFICATIONS',secData: 'DATA MANAGEMENT',lblIcsTitle: 'CALENDAR SUBSCRIPTION',lblIcsUrl: 'ICS URL (iOS/Google Calendar)',btnCopy: 'COPY',btnResetToken: 'RESET TOKEN',loginTitle:'SYSTEM ACCESS',passwordPlaceholder:'Authorization Key',unlockBtn:'UNLOCK TERMINAL',check:'CHECK',add:'ADD NEW',settings:'CONFIG',logs:'LOGS',logout:'LOGOUT',totalServices:'TOTAL SERVICES',expiringSoon:'EXPIRING SOON',expiredAlert:'EXPIRED / ALERT',serviceName:'SERVICE NAME',type:'TYPE',nextDue:'NEXT DUE',uptime:'UPTIME',lastRenew:'LAST RENEW',cyclePeriod:'CYCLE',actions:'ACTIONS',cycle:'CYCLE',reset:'RESET',disabled:'DISABLED',days:'DAYS',daysUnit:'DAYS',typeReset:'RESET',typeCycle:'CYCLE',lunarCal:'Lunar',lbOffline:'OFFLINE',unit:{day:'DAY',month:'MTH',year:'YR'},editService:'EDIT SERVICE',newService:'NEW SERVICE',formName:'NAME',namePlaceholder:'e.g. Netflix',formType:'MODE',createDate:'CREATE DATE',interval:'INTERVAL',note:'NOTE',status:'STATUS',active:'ACTIVE',disabledText:'DISABLED',cancel:'CANCEL',save:'SAVE DATA',saveSettings:'SAVE CONFIG',settingsTitle:'SYSTEM CONFIG',setNotify:'NOTIFICATION',pushSwitch:'MASTER PUSH',pushUrl:'WEBHOOK URL',notifyThreshold:'ALERT THRESHOLD',setAuto:'AUTOMATION',autoRenewSwitch:'AUTO RENEW',autoRenewThreshold:'RENEW AFTER',autoDisableThreshold:'DISABLE AFTER',daysOverdue:'DAYS OVERDUE',sysLogs:'SYSTEM LOGS',execLogs:'EXECUTION LOGS',clearHistory:'CLEAR HISTORY',noLogs:'NO DATA',liveLog:'LIVE TERMINAL',btnExport: 'Export Data',btnImport: 'Import Data',btnTest: 'Send Test',btnRefresh:'REFRESH',
+            en: { filter:{expired:'Overdue/Today', w7:'Within 7 Days', w30:'Within 30 Days', future:'Future(>30d)', new:'New (<30d)', stable:'Stable (1m-1y)', long:'Long Term (>1y)', m1:'Last Month', m6:'Last 6 Months', year:'This Year', earlier:'Earlier'}, secPref: 'PREFERENCES',manualRenew: 'Quick Renew',tipToggle: 'Toggle Status',tipRenew: 'Quick Renew',tipEdit: 'Edit Service',tipDelete: 'Delete Service',secNotify: 'NOTIFICATIONS',secData: 'DATA MANAGEMENT',lblIcsTitle: 'CALENDAR SUBSCRIPTION',lblIcsUrl: 'ICS URL (iOS/Google Calendar)',btnCopy: 'COPY',btnResetToken: 'RESET TOKEN',loginTitle:'SYSTEM ACCESS',passwordPlaceholder:'Authorization Key',unlockBtn:'UNLOCK TERMINAL',check:'CHECK',add:'ADD NEW',settings:'CONFIG',logs:'LOGS',logout:'LOGOUT',totalServices:'TOTAL SERVICES',expiringSoon:'EXPIRING SOON',expiredAlert:'EXPIRED / ALERT',serviceName:'SERVICE NAME',type:'TYPE',nextDue:'NEXT DUE',uptime:'UPTIME',lastRenew:'LAST RENEW',cyclePeriod:'CYCLE',actions:'ACTIONS',cycle:'CYCLE',reset:'RESET',disabled:'DISABLED',days:'DAYS',daysUnit:'DAYS',typeReset:'RESET',typeCycle:'CYCLE',lunarCal:'Lunar',lbOffline:'OFFLINE',unit:{day:'DAY',month:'MTH',year:'YR'},editService:'EDIT SERVICE',newService:'NEW SERVICE',formName:'NAME',namePlaceholder:'e.g. Netflix',formType:'MODE',createDate:'CREATE DATE',interval:'INTERVAL',note:'NOTE',status:'STATUS',active:'ACTIVE',disabledText:'DISABLED',cancel:'CANCEL',save:'SAVE DATA',saveSettings:'SAVE CONFIG',settingsTitle:'SYSTEM CONFIG',setNotify:'NOTIFICATION',pushSwitch:'MASTER PUSH',pushUrl:'WEBHOOK URL',notifyThreshold:'ALERT THRESHOLD',setAuto:'AUTOMATION',autoRenewSwitch:'AUTO RENEW',autoRenewThreshold:'RENEW AFTER',autoDisableThreshold:'DISABLE AFTER',daysOverdue:'DAYS OVERDUE',sysLogs:'SYSTEM LOGS',execLogs:'EXECUTION LOGS',clearHistory:'CLEAR HISTORY',noLogs:'NO DATA',liveLog:'LIVE TERMINAL',btnExport: 'Export Data',btnImport: 'Import Data',btnTest: 'Send Test',btnRefresh:'REFRESH',
             lblEnable: 'Enable', lblToken: 'Token', lblApiKey: 'API Key', lblChatId: 'Chat ID', 
             lblServer: 'Server URL', lblDevKey: 'Device Key', lblFrom: 'From Email', lblTo: 'To Email',
             lblNotifyTime: 'Alarm Time', btnResetToken: 'RESET TOKEN',
@@ -2115,6 +2114,31 @@ const HTML = `<!DOCTYPE html>
                 // 2. 定义分页状态
                 const currentPage = ref(1);
                 const pageSize = ref(10); // 默认每页显示 10 条
+                const sortState = ref({ prop: 'daysLeft', order: 'ascending' });
+                const filterState = ref({});
+                const handleSortChange = ({ prop, order }) => { sortState.value = { prop, order }; };
+                const handleFilterChange = (filters) => { filterState.value = { ...filterState.value, ...filters }; };
+                const nextDueFilters = computed(() => [
+                    { text: t('filter.expired'), value: 'expired' },
+                    { text: t('filter.w7'), value: 'w7' },
+                    { text: t('filter.w30'), value: 'w30' },
+                    { text: t('filter.future'), value: 'future' }
+                ]);
+                const typeFilters = computed(() => [
+                    { text: t('typeCycle'), value: 'cycle' },
+                    { text: t('typeReset'), value: 'reset' }
+                ]);
+                const uptimeFilters = computed(() => [
+                    { text: t('filter.new'), value: 'new' },
+                    { text: t('filter.stable'), value: 'stable' },
+                    { text: t('filter.long'), value: 'long' }
+                ]);
+                const lastRenewFilters = computed(() => [
+                    { text: t('filter.m1'), value: 'm1' },
+                    { text: t('filter.m6'), value: 'm6' },
+                    { text: t('filter.year'), value: 'year' },
+                    { text: t('filter.earlier'), value: 'earlier' }
+                ]);
                 const t = (k) => { let v=messages[lang.value]; k.split('.').forEach(p=>v=v?v[p]:k); return v||k; };
                 const expiringCount = computed(() => list.value.filter(i => i.enabled && i.daysLeft>0 && i.daysLeft<=((typeof i.notifyDays==='number')?i.notifyDays:3)).length);
                 const expiredCount = computed(() => list.value.filter(i => i.enabled && i.daysLeft<=0).length);
@@ -2125,6 +2149,66 @@ const HTML = `<!DOCTYPE html>
                     if (currentTag.value === 'DISABLED') r = r.filter(i => !i.enabled);
                     else if (currentTag.value) r = r.filter(i => (i.tags||[]).includes(currentTag.value));
                     if (searchKeyword.value) { const k=searchKeyword.value.toLowerCase(); r = r.filter(i => i.name.toLowerCase().includes(k) || (i.message||'').toLowerCase().includes(k)); }
+
+                    if (filterState.value.daysLeft && filterState.value.daysLeft.length > 0) {
+                        const fv = filterState.value.daysLeft;
+                        r = r.filter(row => {
+                            const d = row.daysLeft;
+                            return fv.some(v => {
+                                if (v === 'expired') return d <= 0;
+                                if (v === 'w7') return d > 0 && d <= 7;
+                                if (v === 'w30') return d > 7 && d <= 30;
+                                if (v === 'future') return d > 30;
+                                return false;
+                            });
+                        });
+                    }
+
+                    if (filterState.value.type && filterState.value.type.length > 0) {
+                        const fv = filterState.value.type;
+                        r = r.filter(row => fv.includes(row.type));
+                    }
+
+                    if (filterState.value.serviceDays && filterState.value.serviceDays.length > 0) {
+                        const fv = filterState.value.serviceDays;
+                        r = r.filter(row => {
+                            const d = row.serviceDays;
+                            return fv.some(v => {
+                                if (v === 'new') return d < 30;
+                                if (v === 'stable') return d >= 30 && d <= 365;
+                                if (v === 'long') return d > 365;
+                                return false;
+                            });
+                        });
+                    }
+
+                    if (filterState.value.lastRenewDate && filterState.value.lastRenewDate.length > 0) {
+                        const fv = filterState.value.lastRenewDate;
+                        const now = new Date();
+                        const todayStr = getLocalToday();
+                        r = r.filter(row => {
+                            const rd = new Date(row.lastRenewDate);
+                            const diffDays = (now - rd) / (1000 * 3600 * 24);
+                            return fv.some(v => {
+                                if (v === 'm1') return diffDays <= 30;
+                                if (v === 'm6') return diffDays <= 180;
+                                if (v === 'year') return rd.getFullYear() === now.getFullYear();
+                                if (v === 'earlier') return diffDays > 180;
+                                return false;
+                            });
+                        });
+                    }
+
+                    if (sortState.value.prop && sortState.value.order) {
+                        const { prop, order } = sortState.value;
+                        const k = order === 'ascending' ? 1 : -1;
+                        r = [...r].sort((a,b) => {
+                            if (a[prop] > b[prop]) return k;
+                            if (a[prop] < b[prop]) return -k;
+                            return 0;
+                        });
+                    }
+
                     return r;
                 });
 
@@ -2228,11 +2312,13 @@ const HTML = `<!DOCTYPE html>
                     } finally { loading.value=false; }
                 };
 
+                const getLocalToday = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+
                 const saveItem = async () => {
                     if(!form.value.name.trim()) return ElMessage.error(t('msg.nameReq'));
                     if(list.value.some(i=>i.name.toLowerCase()===form.value.name.toLowerCase() && i.id!==form.value.id)) return ElMessage.error(t('msg.nameExist'));
                     if(form.value.lastRenewDate < form.value.createDate) return ElMessage.error(t('msg.dateError'));
-                    if(form.value.lastRenewDate > new Date().toISOString().split('T')[0]) return ElMessage.error(t('msg.futureError'));
+                    if(form.value.lastRenewDate > getLocalToday()) return ElMessage.error(t('msg.futureError'));
                     
                     let newList=[...list.value];
                     if(isEdit.value) { const i=newList.findIndex(x=>x.id===form.value.id); if(i!==-1) newList[i]=form.value; }
@@ -2292,7 +2378,7 @@ const HTML = `<!DOCTYPE html>
                     } catch (e) { return isoStr; }
                 };                
 
-                const openAdd = () => { isEdit.value=false; const d=new Date().toISOString().split('T')[0]; form.value={id:Date.now().toString(),name:'',createDate:d,lastRenewDate:d,intervalDays:30,cycleUnit:'day',type:'cycle',enabled:true,tags:[],useLunar:false, notifyDays:3, notifyTime: '08:00', autoRenew:true, autoRenewDays:3}; dialogVisible.value=true; };
+                const openAdd = () => { isEdit.value=false; const d=getLocalToday(); form.value={id:Date.now().toString(),name:'',createDate:d,lastRenewDate:d,intervalDays:30,cycleUnit:'day',type:'cycle',enabled:true,tags:[],useLunar:false, notifyDays:3, notifyTime: '08:00', autoRenew:true, autoRenewDays:3}; dialogVisible.value=true; };
                 const editItem = (row) => { isEdit.value=true; form.value={...row,cycleUnit:row.cycleUnit||'day',tags:[...(row.tags||[])],useLunar:!!row.useLunar, notifyDays:(row.notifyDays!==undefined?row.notifyDays:3), notifyTime: (row.notifyTime || '08:00'), autoRenew:row.autoRenew!==false, autoRenewDays:(row.autoRenewDays!==undefined?row.autoRenewDays:3)}; dialogVisible.value=true; };
                 const openSettings = () => { 
                     settingsForm.value = JSON.parse(JSON.stringify(settings.value)); 
@@ -2368,17 +2454,7 @@ const HTML = `<!DOCTYPE html>
                 const getTagCount = (t) => list.value.filter(i=>(i.tags||[]).includes(t)).length;
 
                 const manualRenew = async (row) => {
-
-                    const tz = settings.value.timezone || 'UTC';
-
-                    let todayStr = '';
-                    try {
-                        const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
-                        todayStr = fmt.format(new Date());
-                    } catch(e) {
-                        todayStr = new Date().toISOString().split('T')[0];
-                    }
-
+                    const todayStr = getLocalToday();
                     const oldDate = row.lastRenewDate;
                     row.lastRenewDate = todayStr;
 
@@ -2460,7 +2536,9 @@ const HTML = `<!DOCTYPE html>
                     Edit, Delete, Plus, VideoPlay, Setting, Bell, Document, Lock, Monitor, SwitchButton, Calendar, Timer, Files, AlarmClock, Warning, Search, Cpu, Link, Message, Promotion, Iphone, Moon, Sunny,
                     getDaysClass, formatDaysLeft, getTagClass, getLogColor, getLunarStr, getYearGanZhi, getSmartLunarText, getMonthStr, getTagCount, tableRowClassName, channelMap, toggleChannel, testChannel, testing,
                     calendarUrl, copyIcsUrl, resetCalendarToken,manualRenew,RefreshRight,timezoneList,currentPage, pageSize, pagedList,
-                    isDark, toggleTheme
+                    isDark, toggleTheme,
+                    handleSortChange, handleFilterChange, 
+                    nextDueFilters, typeFilters, uptimeFilters, lastRenewFilters
                 };
             }
         }).use(ElementPlus).mount('#app');
