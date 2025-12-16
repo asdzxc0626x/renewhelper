@@ -119,23 +119,19 @@
 3.  **创建 KV 数据库**：
     - 在 Cloudflare 后台创建一个 KV 命名空间（如 `RENEW_KV`）。
     - 复制该 KV 的 **ID**。
-    - 修改您 Fork 后的仓库中的 `wrangler.toml` 文件：
-      ```toml
-      [[kv_namespaces]]
-      binding = "RENEW_KV"
-      id = "这里填入你的KV ID"  # <--- 必须修改此处
-      ```
+
 4.  **配置 GitHub Secrets**：
     - 进入您 Fork 的仓库 -> **Settings** -> **Secrets and variables** -> **Actions**。
-    - 点击 **New repository secret**，依次添加两个变量：
+    - 点击 **New repository secret**，依次添加4个变量：
         - `CF_API_TOKEN`: 填入您的 API Token。
         - `CF_ACCOUNT_ID`: 填入您的 Account ID。
+        - `CF_KV_ID`: 填入您刚刚复制的 KV ID (Actions 会自动注入)。        
+        - `AUTH_PASSWORD`: 填入您的登录密码(设置后，即使同步代码也不会被覆盖)。
+
 5.  **启用并部署**：
     - 进入 **Actions** 标签页，点击绿色按钮 **I understand my workflows...** 启用。
     - 在左侧选择 **Deploy to Cloudflare Workers**，点击右侧 **Run workflow** 手动触发首次部署。
-    - **后续更新**：每当原作者发布新版本，您只需在 GitHub 点击 **Sync Fork**，Actions 会自动将最新代码部署到您的 Worker，全程自动化。
-6.  **最后一步**：
-    - 部署完成后，记得去 Cloudflare 后台设置环境变量 `AUTH_PASSWORD`（登录密码）。
+    - **后续更新**：每当原作者发布新版本，您只需在 GitHub 点击 Sync Fork，Actions 会自动将最新代码（含新功能）部署到您的 Worker，同时保留您的密码设置。
 
 ### 方式四：Docker部署
 
